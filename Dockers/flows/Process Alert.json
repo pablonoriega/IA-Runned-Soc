@@ -1,0 +1,895 @@
+{
+  "name": "Process Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "soc-alert",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -864,
+        -96
+      ],
+      "id": "f8f500e0-3e1a-4d7e-b20c-d13e3b67d94e",
+      "name": "Webhook",
+      "webhookId": "c45cf6f5-41ba-4850-8c91-45f5d382dd2f"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d2824cd3-7aba-41f7-bdee-84210ef985bf",
+              "leftValue": "={{$json.alert_id}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -352,
+        -96
+      ],
+      "id": "dc6fa719-337e-425b-9981-5fb5b0693bb0",
+      "name": "Existe Alarma"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT *\nFROM alerts\nWHERE alert_id = {{ $json.alert_id }};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -128,
+        -112
+      ],
+      "id": "1d4e73fe-6f59-412e-b910-e36dcf490040",
+      "name": "Recuperar Alarma",
+      "notesInFlow": false,
+      "credentials": {
+        "postgres": {
+          "id": "JmwTUVkO92wuYNBe",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://soc-ml-api:8000/health",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        48,
+        -112
+      ],
+      "id": "b52419bc-67dc-4b52-aa05-929efd431097",
+      "name": "API OK ?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d2824cd3-7aba-41f7-bdee-84210ef985bf",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "ok",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        -112
+      ],
+      "id": "bd0cca80-62d6-4a3e-94bc-392c0c4c555b",
+      "name": "IF"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://soc-ml-api:8000/predict",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"top_k\": 3,\n  \"data\": {\n    \"alert_type\": \"{{ $('Recuperar Alarma').item.json.alert_type }}\",\n    \"attack_phase\": \"{{ $('Recuperar Alarma').item.json.attack_phase }}\",\n    \"asset_type\": \"{{ $('Recuperar Alarma').item.json.asset_type }}\",\n    \"asset_criticality\": \"{{ $('Recuperar Alarma').item.json.asset_criticality }}\",\n    \"severity\": \"{{ $('Recuperar Alarma').item.json.severity }}\",\n    \"timestamp_utc\": \"{{ new Date($('Recuperar Alarma').item.json.timestamp_utc).toISOString() }}\",\n    \"is_business_hours\": \"{{ $('Recuperar Alarma').item.json.is_business_hours ? 1 : 0 }}\",\n    \"detection_source\": \"{{ $('Recuperar Alarma').item.json.detection_source }}\",\n    \"confidence\": \"{{ $('Recuperar Alarma').item.json.confidence }}\",\n    \"src_ip\": \"{{ $('Recuperar Alarma').item.json.src_ip }}\",\n    \"asset_exposure\": \"{{ $('Recuperar Alarma').item.json.asset_exposure }}\",\n    \"src_country\": \"{{ $('Recuperar Alarma').item.json.src_country }}\",\n    \"geo_anomaly\": \"{{ $('Recuperar Alarma').item.json.geo_anomaly ? 1 : 0 }}\",\n    \"ip_reputation\": \"{{ $('Recuperar Alarma').item.json.ip_reputation }}\",\n    \"repeat_offender\": \"{{ $('Recuperar Alarma').item.json.repeat_offender ? 1 : 0 }}\",\n    \"previous_incidents_30d\": \"{{ $('Recuperar Alarma').item.json.previous_incidents_30d }}\",\n    \"event_count\": \"{{ $('Recuperar Alarma').item.json.event_count }}\",\n    \"time_window_minutes\": \"{{ $('Recuperar Alarma').item.json.time_window_minutes }}\",\n    \"user_role\": \"{{ $('Recuperar Alarma').item.json.user_role }}\",\n    \"is_privileged_account\": \"{{ $('Recuperar Alarma').item.json.is_privileged_account ? 1 : 0 }}\",\n    \"isolation_supported\": \"{{ $('Recuperar Alarma').item.json.isolation_supported ? 1 : 0 }}\",\n    \"downtime_tolerance\": \"{{ $('Recuperar Alarma').item.json.downtime_tolerance }}\"\n  }\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1104,
+        -464
+      ],
+      "id": "ccd17b9d-6091-4683-82d3-8de2dab42006",
+      "name": "PredecirAcción"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE alert_workflow\nSET status = 'PROCESSING',\n    processed_at = NOW()\nWHERE alert_id = {{$json.body.alert_id}} AND status = 'NEW'\nRETURNING alert_id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -576,
+        -96
+      ],
+      "id": "f58d534d-1d89-4945-a73e-84a2f3972e31",
+      "name": "Comprobar Alarma1",
+      "credentials": {
+        "postgres": {
+          "id": "JmwTUVkO92wuYNBe",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        -240
+      ],
+      "id": "d7682545-1bf9-4a12-b403-6ad35be0d0a7",
+      "name": "Ollama Chat Model1",
+      "credentials": {
+        "ollamaApi": {
+          "id": "seTnzOSnNm7B83eh",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://soc-console-api:7000/playbook",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1360,
+        -464
+      ],
+      "id": "50a71394-8844-4e6f-9e9c-7665917da606",
+      "name": "Obtener Playbook"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Dada la siguiente alarma de seguridad:\n\nAlert type: {{ $('Recuperar Alarma').item.json.alert_type }}\nAttack phase: {{ $('Recuperar Alarma').item.json.attack_phase }}\nAsset type: {{ $('Recuperar Alarma').item.json.asset_type }}\nAsset criticality: {{ $('Recuperar Alarma').item.json.asset_criticality }}\nSeverity: {{ $('Recuperar Alarma').item.json.severity }}\nTimestamp UTC: {{ $('Recuperar Alarma').item.json.timestamp_utc }}\nIs business hours: {{ $('Recuperar Alarma').item.json.is_business_hours }}\nDetection source: {{ $('Recuperar Alarma').item.json.detection_source }}\nConfidence: {{ $('Recuperar Alarma').item.json.confidence }}\nSource IP: {{ $('Recuperar Alarma').item.json.src_ip }}\nAsset exposure: {{ $('Recuperar Alarma').item.json.asset_exposure }}\nSource country: {{ $('Recuperar Alarma').item.json.src_country }}\nGeo anomaly: {{ $('Recuperar Alarma').item.json.geo_anomaly }}\nIP reputation: {{ $('Recuperar Alarma').item.json.ip_reputation }}\nRepeat offender: {{ $('Recuperar Alarma').item.json.repeat_offender }}\nPrevious incidents (30d): {{ $('Recuperar Alarma').item.json.previous_incidents_30d }}\nEvent count: {{ $('Recuperar Alarma').item.json.event_count }}\nTime window (minutes): {{ $('Recuperar Alarma').item.json.time_window_minutes }}\nUser role: {{ $('Recuperar Alarma').item.json.user_role }}\nIs privileged account: {{ $('Recuperar Alarma').item.json.is_privileged_account }}\nIsolation supported: {{ $('Recuperar Alarma').item.json.isolation_supported }}\nDowntime tolerance: {{ $('Recuperar Alarma').item.json.downtime_tolerance }}\n\n=== PLAYBOOK (referencia obligatoria) ===\n\nDecision principles:\n{{ $json.decision_principles }}\n\nBase rules by phase:\n{{ $json.base_rules_by_phase }}\n\nPolicy overrides:\n{{ $json.policy_overrides }}\n\n=== ACCIÓN PREDICHA POR EL MODELO ===\n{{ $('PredecirAcción').item.json.recommended_action }}\n\n⚠️ INSTRUCCIONES DE FORMATO (OBLIGATORIAS):\n- NO añadas introducciones, saludos ni frases tipo “Claro que sí”.\n- Responde ÚNICAMENTE con las 4 líneas siguientes.\n- Usa lenguaje técnico y basado en reglas (no opiniones).\n\nRESPUESTA (exactamente este formato):\n\nTipo de alerta recibida: {{ $('Recuperar Alarma').item.json.alert_type }}\nSeveridad: {{ $('Recuperar Alarma').item.json.severity }}\nFase de ataque: {{ $('Recuperar Alarma').item.json.attack_phase }}\nActivo comprometido: {{ $('Recuperar Alarma').item.json.asset_type }}\nCriticidad del activo: {{ $('Recuperar Alarma').item.json.asset_criticality }}\n\n1) Regla base aplicada:  \nSegún la regla [RULE_ID] de base_rules_by_phase, en fase \"{{ $('Recuperar Alarma').item.json.attack_phase }}\" se aplica \"{{ $('PredecirAcción').item.json.recommended_action }}\" porque ______________________________________________.\n\n2) Señal clave del contexto:  \nEsta decisión se apoya principalmente en la señal de que ______________________________________________.\n\n3) Override de política (si aplica):  \nEl override [POLICY_ID] de policy_overrides confirma o ajusta la acción porque ______________________________________________.\n\n4) Conclusión:  \nPor todo ello, la acción recomendada es **{{ $('PredecirAcción').item.json.recommended_action }}**.\n\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1680,
+        -464
+      ],
+      "id": "92ff1813-be38-4cb2-9a3f-e1178f0c08cc",
+      "name": "Generar Explicación AI"
+    },
+    {
+      "parameters": {
+        "url": "http://soc-console-api:7000/operators",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        432,
+        64
+      ],
+      "id": "92ff0c54-e551-4834-bd58-4fad9f801a5a",
+      "name": "Obtener Operadores"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=INPUT (FUENTE DE VERDAD):\nCandidatos (JSON):\n{{ JSON.stringify($json.candidates) }}\n\nTAREA:\nDevuelve SOLO el operator_id del mejor candidato.\n\nIMPORTANTE:\n- SOLO puedes elegir entre los candidatos del JSON. NO inventes operadores.\n- Asume que todos los candidatos YA cumplen reglas (capacidad, horario, skills y severidad). No re-filtrar.\n\nREGLA PRINCIPAL (OBLIGATORIA) DE REPARTO / DIVERSIFICACIÓN:\n1) Elige SIEMPRE al candidato con MENOR OCUPACIÓN RELATIVA:\n   score_balance = candidate.active_assigned / candidate.max_active\n   - Gana el que tenga score_balance más bajo (más “libre” en proporción).\n2) Si hay empate exacto en score_balance, elige el que tenga MENOR active_assigned (menos carga absoluta).\n\nDESEMPATE (solo si sigue el empate):\n1) menor candidate.sla_ack_seconds\n2) si empatan, menor candidate.sla_resolve_seconds\n3) si empatan, menor candidate.skills.min_severity\n4) si empatan, menor candidate.operator_id\n\nSI NO HAY CANDIDATOS (lista vacía):\n- Responde 0\n\nFORMATO DE SALIDA (OBLIGATORIO):\n- Responde con UNA SOLA COSA: el número (ej: 5)\n- Sin texto\n- Sin explicaciones\n- Sin JSON\n- Sin comillas\n- Sin saltos de línea",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "Eres un selector determinista. No explicas nada. Solo elige el mejor operador"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1856,
+        48
+      ],
+      "id": "772a7bd5-b119-4e55-b38c-086e3a0844cf",
+      "name": "Asignar Operador"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2656,
+        -224
+      ],
+      "id": "b40aeecd-017c-4462-b456-01185030b246",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1856,
+        272
+      ],
+      "id": "2cb09cec-2aff-4d56-93a6-3ce15ab2027e",
+      "name": "Ollama Chat Model3",
+      "credentials": {
+        "ollamaApi": {
+          "id": "seTnzOSnNm7B83eh",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Si el input recibido es exactamente un número y nada más (sin texto adicional, espacios, saltos de línea ni caracteres especiales), devuélvelo tal cual.\n\nSi el input contiene texto u otro contenido adicional, debes extraer exclusivamente el número correcto correspondiente al operator_id.\n\nLa respuesta debe contener únicamente el número del operador, sin explicaciones, sin texto adicional, sin comillas, sin espacios, sin saltos de línea y sin ningún formato extra.\n\nNo puedes devolver un número de un operador que no se encuentre en el input\n\nINPUT:\n{{ $json.output }}",
+        "options": {
+          "systemMessage": "Debes analizar el input que te paso, y devolver el numero correcto."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        2192,
+        48
+      ],
+      "id": "ccb8efb9-efa6-4b4b-b452-dd5f997e96f8",
+      "name": "Parsear Operador"
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        2192,
+        256
+      ],
+      "id": "ce77287e-1e1c-4361-9b50-3bea4307c2d1",
+      "name": "Ollama Chat Model4",
+      "credentials": {
+        "ollamaApi": {
+          "id": "seTnzOSnNm7B83eh",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://soc-console-api:7000/model/latest",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        848,
+        -176
+      ],
+      "id": "e38d0dc3-6ec1-454d-ba80-949ed428c5f0",
+      "name": "Obtener Version Modelo"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO alert_events (alert_id, event_type, actor, details)\nVALUES (\n  {{ $('Recuperar Alarma').item.json.alert_id }},\n  'ALERT ASSIGNED',\n  'N8N',\n  jsonb_build_object(\n    'message',\n    CONCAT('The assigned operator selected by n8n has been ', {{ $('Parsear Operador').first().json.output }})\n  )\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3072,
+        96
+      ],
+      "id": "d0095bfa-4bf0-433a-97e8-4d65266edf93",
+      "name": "Insert Historics",
+      "credentials": {
+        "postgres": {
+          "id": "JmwTUVkO92wuYNBe",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "=get a row from postgres database",
+        "operation": "executeQuery",
+        "query": "UPDATE alert_workflow\nSET\n  status = 'PENDING_HUMAN',\n  model_recommended_action = '{{ $('PredecirAcción').item.json.recommended_action }}',\n  assigned_to = '{{ $('Parsear Operador').first().json.output }}',\n  model_version = '{{ $('Obtener Version Modelo').first().json.version }}',\n  assigned_at = NOW(),\n  model_confidence = {{ $('PredecirAcción').item.json.confidence }},\n  model_top_k = '{{ JSON.stringify($(\"PredecirAcción\").item.json.top_k) }}'::jsonb,\n  ai_explanation = '{{ $('Generar Explicación AI').item.json.output }}',\n  updated_at = NOW()\nWHERE alert_id = {{ $('Recuperar Alarma').item.json.alert_id }};\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.6,
+      "position": [
+        3264,
+        -160
+      ],
+      "id": "57a8eaba-baf6-4c9a-8ddf-b1c82bdad6cb",
+      "name": "Execute a SQL query in Postgres",
+      "credentials": {
+        "postgres": {
+          "id": "JmwTUVkO92wuYNBe",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        3120,
+        -160
+      ],
+      "id": "9ef1e3a5-66db-4de6-8e00-e27d9dc5bae5",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "seTnzOSnNm7B83eh",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Update the row in the database. You always have to use the tool",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        3120,
+        -448
+      ],
+      "id": "f7ba5030-67c9-43d7-ac96-c9bb23a48c1a",
+      "name": "Update Estado",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d2824cd3-7aba-41f7-bdee-84210ef985bf",
+              "leftValue": "={{ $json.candidates_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        800,
+        64
+      ],
+      "id": "a6ce870e-d17b-4eec-9c04-c702a25c1d54",
+      "name": "IF 1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const operators = Array.isArray($json.items) ? $json.items : [];\n\nconst alert = {\n  alert_type: $('Recuperar Alarma').item.json.alert_type,\n  attack_phase: $('Recuperar Alarma').item.json.attack_phase,\n  severity: Number($('Recuperar Alarma').item.json.severity),\n  is_business_hours: Boolean($('Recuperar Alarma').item.json.is_business_hours),\n};\n\nfunction arr(x) { return Array.isArray(x) ? x : []; }\n\nfunction activeCount(o) {\n  // Usa una sola métrica; aquí priorizo active_assigned\n  if (typeof o.active_assigned === 'number') return o.active_assigned;\n  if (typeof o.currentAlarmsCount === 'number') return o.currentAlarmsCount;\n  return 0;\n}\n\nfunction hasSkill(o, key, value) {\n  const list = arr(o.skills?.[key]);\n  return list.includes(value);\n}\n\nconst candidates = operators\n  .filter(o => o.is_active === true)\n  .filter(o => o.on_call === false)\n  .filter(o => activeCount(o) < Number(o.max_active ?? 0)) // CAPACIDAD HARD\n  .filter(o => !(o.business_hours_only === true && alert.is_business_hours === false)) // HORARIO HARD\n  .filter(o => hasSkill(o, \"alert_types\", alert.alert_type)) // TIPO HARD\n  .filter(o => hasSkill(o, \"attack_phases\", alert.attack_phase)) // FASE HARD\n  .filter(o => alert.severity >= Number(o.skills?.min_severity ?? Infinity)) // SEVERIDAD HARD (opcional pero recomendado)\n  .map(o => ({\n    operator_id: o.operator_id,\n    sla_ack_seconds: o.sla_ack_seconds,\n    sla_resolve_seconds: o.sla_resolve_seconds,\n    max_active: o.max_active,\n    active_assigned: activeCount(o),\n    business_hours_only: o.business_hours_only,\n    skills: {\n      min_severity: o.skills?.min_severity ?? null,\n      alert_types: arr(o.skills?.alert_types),\n      attack_phases: arr(o.skills?.attack_phases),\n    },\n  }));\n\nreturn [{\n  json: {\n    alert,\n    candidates,\n    candidates_count: candidates.length,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        64
+      ],
+      "id": "6b62de26-7788-44f7-8729-ad72397495c5",
+      "name": "Filtro Completo"
+    },
+    {
+      "parameters": {
+        "jsCode": "const opNode = $items(\"Obtener Operadores\")[0]?.json;\nconst operators = Array.isArray(opNode?.items) ? opNode.items : [];\n\nconst alert = {\n  alert_type: $('Recuperar Alarma').item.json.alert_type,\n  attack_phase: $('Recuperar Alarma').item.json.attack_phase,\n  severity: Number($('Recuperar Alarma').item.json.severity),\n  is_business_hours: Boolean($('Recuperar Alarma').item.json.is_business_hours),\n};\n\nfunction arr(x) { return Array.isArray(x) ? x : []; }\n\nfunction activeCount(o) {\n  // Usa una sola métrica; aquí priorizo active_assigned\n  if (typeof o.active_assigned === 'number') return o.active_assigned;\n  if (typeof o.currentAlarmsCount === 'number') return o.currentAlarmsCount;\n  return 0;\n}\n\nfunction hasSkill(o, key, value) {\n  const list = arr(o.skills?.[key]);\n  return list.includes(value);\n}\n\nconst candidates = operators\n  .filter(o => o.is_active === true)\n  .filter(o => o.on_call === false)\n  .filter(o => activeCount(o) < Number(o.max_active ?? 0)) // CAPACIDAD HARD\n  .filter(o => !(o.business_hours_only === true && alert.is_business_hours === false)) // HORARIO HARD\n  .filter(o => hasSkill(o, \"alert_types\", alert.alert_type)) // TIPO HARD\n  .filter(o => alert.severity >= Number(o.skills?.min_severity ?? Infinity)) // SEVERIDAD HARD (opcional pero recomendado)\n  .map(o => ({\n    operator_id: o.operator_id,\n    sla_ack_seconds: o.sla_ack_seconds,\n    sla_resolve_seconds: o.sla_resolve_seconds,\n    max_active: o.max_active,\n    active_assigned: activeCount(o),\n    business_hours_only: o.business_hours_only,\n    skills: {\n      min_severity: o.skills?.min_severity ?? null,\n      alert_types: arr(o.skills?.alert_types),\n      attack_phases: arr(o.skills?.attack_phases),\n    },\n  }));\n\nreturn [{\n  json: {\n    alert,\n    candidates,\n    candidates_count: candidates.length,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        144
+      ],
+      "id": "7f1bd635-c88f-41e8-ba18-5a30e976f5cb",
+      "name": "Filtro Sin Phase"
+    },
+    {
+      "parameters": {
+        "jsCode": "const opNode = $items(\"Obtener Operadores\")[0]?.json;\nconst operators = Array.isArray(opNode?.items) ? opNode.items : [];\n\nconst alert = {\n  alert_type: $('Recuperar Alarma').item.json.alert_type,\n  attack_phase: $('Recuperar Alarma').item.json.attack_phase,\n  severity: Number($('Recuperar Alarma').item.json.severity),\n  is_business_hours: Boolean($('Recuperar Alarma').item.json.is_business_hours),\n};\n\nfunction arr(x) { return Array.isArray(x) ? x : []; }\n\nfunction activeCount(o) {\n  // Usa una sola métrica; aquí priorizo active_assigned\n  if (typeof o.active_assigned === 'number') return o.active_assigned;\n  if (typeof o.currentAlarmsCount === 'number') return o.currentAlarmsCount;\n  return 0;\n}\n\nfunction hasSkill(o, key, value) {\n  const list = arr(o.skills?.[key]);\n  return list.includes(value);\n}\n\nconst candidates = operators\n  .filter(o => o.is_active === true)\n  .filter(o => o.on_call === false)\n  .filter(o => activeCount(o) < Number(o.max_active ?? 0)) // CAPACIDAD HARD\n  .filter(o => !(o.business_hours_only === true && alert.is_business_hours === false)) // HORARIO HARD\n  .filter(o => alert.severity >= Number(o.skills?.min_severity ?? Infinity)) // SEVERIDAD HARD (opcional pero recomendado)\n  .map(o => ({\n    operator_id: o.operator_id,\n    sla_ack_seconds: o.sla_ack_seconds,\n    sla_resolve_seconds: o.sla_resolve_seconds,\n    max_active: o.max_active,\n    active_assigned: activeCount(o),\n    business_hours_only: o.business_hours_only,\n    skills: {\n      min_severity: o.skills?.min_severity ?? null,\n      alert_types: arr(o.skills?.alert_types),\n      attack_phases: arr(o.skills?.attack_phases),\n    },\n  }));\n\nreturn [{\n  json: {\n    alert,\n    candidates,\n    candidates_count: candidates.length,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        256
+      ],
+      "id": "f9fca183-2d1d-4eb9-b9d8-bbeeb02b1550",
+      "name": "Filtro Sin Alert Type"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d2824cd3-7aba-41f7-bdee-84210ef985bf",
+              "leftValue": "={{ $json.candidates_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        144
+      ],
+      "id": "b6b0a534-42d2-4d99-b4fa-e03232bb4b8e",
+      "name": "IF "
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d2824cd3-7aba-41f7-bdee-84210ef985bf",
+              "leftValue": "={{ $json.candidates_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1456,
+        256
+      ],
+      "id": "f469b0f1-859b-4b33-b09f-cd5fdae18b07",
+      "name": "IF 2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const opNode = $items(\"Obtener Operadores\")[0]?.json;\nconst operators = Array.isArray(opNode?.items) ? opNode.items : [];\n\nconst alert = {\n  alert_type: $('Recuperar Alarma').item.json.alert_type,\n  attack_phase: $('Recuperar Alarma').item.json.attack_phase,\n  severity: Number($('Recuperar Alarma').item.json.severity),\n  is_business_hours: Boolean($('Recuperar Alarma').item.json.is_business_hours),\n};\n\nfunction arr(x) { return Array.isArray(x) ? x : []; }\n\nfunction activeCount(o) {\n  // Usa una sola métrica; aquí priorizo active_assigned\n  if (typeof o.active_assigned === 'number') return o.active_assigned;\n  if (typeof o.currentAlarmsCount === 'number') return o.currentAlarmsCount;\n  return 0;\n}\n\nfunction hasSkill(o, key, value) {\n  const list = arr(o.skills?.[key]);\n  return list.includes(value);\n}\n\nconst candidates = operators\n  .filter(o => o.is_active === true)\n  .filter(o => o.on_call === false)\n  .filter(o => activeCount(o) < Number(o.max_active ?? 0)) // CAPACIDAD HARD\n  .filter(o => !(o.business_hours_only === true && alert.is_business_hours === false)) // HORARIO HARD\n  .map(o => ({\n    operator_id: o.operator_id,\n    sla_ack_seconds: o.sla_ack_seconds,\n    sla_resolve_seconds: o.sla_resolve_seconds,\n    max_active: o.max_active,\n    active_assigned: activeCount(o),\n    business_hours_only: o.business_hours_only,\n    skills: {\n      min_severity: o.skills?.min_severity ?? null,\n      alert_types: arr(o.skills?.alert_types),\n      attack_phases: arr(o.skills?.attack_phases),\n    },\n  }));\n\nreturn [{\n  json: {\n    alert,\n    candidates,\n    candidates_count: candidates.length,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1616,
+        304
+      ],
+      "id": "042c5094-2f87-42a8-83f6-4065e70393ac",
+      "name": "Filtro Sin Severity"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Comprobar Alarma1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Existe Alarma": {
+      "main": [
+        [
+          {
+            "node": "Recuperar Alarma",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recuperar Alarma": {
+      "main": [
+        [
+          {
+            "node": "API OK ?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API OK ?": {
+      "main": [
+        [
+          {
+            "node": "IF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF": {
+      "main": [
+        [
+          {
+            "node": "PredecirAcción",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Obtener Operadores",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Obtener Version Modelo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comprobar Alarma1": {
+      "main": [
+        [
+          {
+            "node": "Existe Alarma",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PredecirAcción": {
+      "main": [
+        [
+          {
+            "node": "Obtener Playbook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generar Explicación AI",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Playbook": {
+      "main": [
+        [
+          {
+            "node": "Generar Explicación AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generar Explicación AI": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Operadores": {
+      "main": [
+        [
+          {
+            "node": "Filtro Completo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Asignar Operador": {
+      "main": [
+        [
+          {
+            "node": "Parsear Operador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Insert Historics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Asignar Operador",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Parsear Operador",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear Operador": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Obtener Version Modelo": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query in Postgres": {
+      "ai_tool": [
+        [
+          {
+            "node": "Update Estado",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Update Estado",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtro Completo": {
+      "main": [
+        [
+          {
+            "node": "IF 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF 1": {
+      "main": [
+        [
+          {
+            "node": "Asignar Operador",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Filtro Sin Phase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtro Sin Phase": {
+      "main": [
+        [
+          {
+            "node": "IF ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF ": {
+      "main": [
+        [
+          {
+            "node": "Asignar Operador",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Filtro Sin Alert Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtro Sin Alert Type": {
+      "main": [
+        [
+          {
+            "node": "IF 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF 2": {
+      "main": [
+        [
+          {
+            "node": "Asignar Operador",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Filtro Sin Severity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtro Sin Severity": {
+      "main": [
+        [
+          {
+            "node": "Asignar Operador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "279cd0e4-6f1b-454a-a98d-f39af500909c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e68f84ab5951afa07f9497154e68706083bac4eb77917393e2b72a9e04421f22"
+  },
+  "id": "rky9kSeE5GHImUEs",
+  "tags": []
+}

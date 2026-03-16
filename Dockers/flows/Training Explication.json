@@ -1,0 +1,227 @@
+{
+  "name": "Training Explication",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "training-grade",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "6e231389-21ae-4104-8485-be7ddd2fd2ba",
+      "name": "Webhook",
+      "webhookId": "f1c1062e-16df-4df1-bbb9-fb9d38708e4d"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://soc-ml-api:8000/predict",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"top_k\": 3,\n  \"data\": {\n    \"alert_type\": \"{{ $json.body.alert.alert_type }}\",\n    \"attack_phase\": \"{{ $json.body.alert.attack_phase }}\",\n    \"asset_type\": \"{{ $json.body.alert.asset_type }}\",\n    \"asset_criticality\": \"{{ $json.body.alert.asset_criticality }}\",\n    \"severity\": \"{{ $json.body.alert.severity }}\",\n    \"timestamp_utc\": \"{{ new Date($json.body.alert.timestamp_utc).toISOString() }}\",\n    \"is_business_hours\": \"{{ $json.body.alert.is_business_hours ? 1 : 0 }}\",\n    \"detection_source\": \"{{ $json.body.alert.detection_source }}\",\n    \"confidence\": \"{{ $json.body.alert.confidence }}\",\n    \"src_ip\": \"{{ $json.body.alert.src_ip }}\",\n    \"asset_exposure\": \"{{ $json.body.alert.asset_exposure }}\",\n    \"src_country\": \"{{ $json.body.alert.src_country }}\",\n    \"geo_anomaly\": \"{{ $json.body.alert.geo_anomaly ? 1 : 0 }}\",\n    \"ip_reputation\": \"{{ $json.body.alert.ip_reputation }}\",\n    \"repeat_offender\": \"{{ $json.body.alert.repeat_offender ? 1 : 0 }}\",\n    \"previous_incidents_30d\": \"{{ $json.body.alert.previous_incidents_30d }}\",\n    \"event_count\": \"{{ $json.body.alert.event_count }}\",\n    \"time_window_minutes\": \"{{ $json.body.alert.time_window_minutes }}\",\n    \"user_role\": \"{{ $json.body.alert.user_role }}\",\n    \"is_privileged_account\": \"{{ $json.body.alert.is_privileged_account ? 1 : 0 }}\",\n    \"isolation_supported\": \"{{ $json.body.alert.isolation_supported ? 1 : 0 }}\",\n    \"downtime_tolerance\": \"{{ $json.body.alert.downtime_tolerance }}\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        320,
+        0
+      ],
+      "id": "35196b0a-4509-49b6-a569-9c69cec13002",
+      "name": "PredecirAcción"
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        896,
+        224
+      ],
+      "id": "049fa7bd-72bb-4857-ae73-8285174bb831",
+      "name": "Ollama Chat Model1",
+      "credentials": {
+        "ollamaApi": {
+          "id": "seTnzOSnNm7B83eh",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://soc-console-api:7000/playbook",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        560,
+        0
+      ],
+      "id": "929d37f1-f624-49f2-97fb-9e1591b1dfce",
+      "name": "Obtener Playbook"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Dada la siguiente alarma de seguridad:\n\nAlert type: {{ $('Webhook').item.json.body.alert.alert_type }}\nAttack phase: {{ $('Webhook').item.json.body.alert.attack_phase }}\nAsset type: {{ $('Webhook').item.json.body.alert.asset_type }}\nAsset criticality: {{ $('Webhook').item.json.body.alert.asset_criticality }}\nSeverity: {{ $('Webhook').item.json.body.alert.severity }}\nTimestamp UTC: {{ $('Webhook').item.json.body.alert.timestamp_utc }}\nIs business hours: {{ $('Webhook').item.json.body.alert.is_business_hours }}\nDetection source: {{ $('Webhook').item.json.body.alert.detection_source }}\nConfidence: {{ $('Webhook').item.json.body.alert.confidence }}\nSource IP: {{ $('Webhook').item.json.body.alert.src_ip }}\nAsset exposure: {{ $('Webhook').item.json.body.alert.asset_exposure }}\nSource country: {{ $('Webhook').item.json.body.alert.src_country }}\nGeo anomaly: {{ $('Webhook').item.json.body.alert.geo_anomaly }}\nIP reputation: {{ $('Webhook').item.json.body.alert.ip_reputation }}\nRepeat offender: {{ $('Webhook').item.json.body.alert.repeat_offender }}\nPrevious incidents (30d): {{ $('Webhook').item.json.body.alert.previous_incidents_30d }}\nEvent count: {{ $('Webhook').item.json.body.alert.event_count }}\nTime window (minutes): {{ $('Webhook').item.json.body.alert.time_window_minutes }}\nUser role: {{ $('Webhook').item.json.body.alert.user_role }}\nIs privileged account: {{ $('Webhook').item.json.body.alert.is_privileged_account }}\nIsolation supported: {{ $('Webhook').item.json.body.alert.isolation_supported }}\nDowntime tolerance: {{ $('Webhook').item.json.body.alert.downtime_tolerance }}\n\n=== PLAYBOOK (referencia obligatoria) ===\n\nDecision principles:\n{{ $json.decision_principles }}\n\nBase rules by phase:\n{{ $json.base_rules_by_phase }}\n\nPolicy overrides:\n{{ $json.policy_overrides }}\n\n=== ACCIÓN DEL OPERADOR ===\n{{ $('Webhook').item.json.body.operator_action }}\n\n=== JUSTIFICACIÓN DEL OPERADOR ===\n{{ $('Webhook').item.json.body.operator_reason }}\n\nINSTRUCCIONES DE FORMATO (OBLIGATORIAS):\n- NO añadas introducciones ni frases decorativas.\n- Responde ÚNICAMENTE con las 4 secciones indicadas.\n- Usa lenguaje técnico y basado en reglas.\n\nRESPUESTA (exactamente este formato):\n\nTipo de alerta recibida: {{ $('Webhook').item.json.body.alert.alert_type }}\nSeveridad: {{ $('Webhook').item.json.body.alert.severity }}\nFase de ataque: {{ $('Webhook').item.json.body.alert.attack_phase }}\nActivo comprometido: {{ $('Webhook').item.json.body.alert.asset_type }}\nCriticidad del activo: {{ $('Webhook').item.json.body.alert.asset_criticality }}\n\n1) Regla base aplicada:  \nSegún la regla [RULE_ID] de base_rules_by_phase, en fase \"{{ $('Webhook').item.json.body.alert.attack_phase }}\" se aplica \"[ACCIÓN_CORRECTA]\" porque ______________________________________________.\n\n2) Señal clave del contexto:  \nEsta decisión se apoya principalmente en la señal de que ______________________________________________.\n\n3) Override de política (si aplica):  \nEl override [POLICY_ID] de policy_overrides confirma o ajusta la acción porque ______________________________________________.\n\n4) Conclusión:  \nPor todo ello, la acción correcta es **[ACCIÓN_CORRECTA]**.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        896,
+        0
+      ],
+      "id": "867367a6-d1ff-44c1-a53b-a47fae840585",
+      "name": "Generar Explicación AI"
+    },
+    {
+      "parameters": {
+        "model": "llama3.2:latest",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1456,
+        288
+      ],
+      "id": "fd830822-3df9-49e9-9e72-cecd2a6dde1e",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "seTnzOSnNm7B83eh",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Actúas como instructor senior de un Security Operations Center (SOC).\nTu función es evaluar la decisión de un analista junior.\n\nDebes determinar de forma clara si la decisión del alumno es CORRECTA o INCORRECTA.\n\nResponde siguiendo estrictamente estas reglas:\n- La primera línea debe ser exactamente: \"Veredicto: CORRECTO\" o \"Veredicto: INCORRECTO\".\n- Después del veredicto, proporciona la explicación técnica.\n- No incluyas saludos.\n- No repitas todos los datos de la alerta.\n- No uses formato JSON.\n- No uses encabezados.\n- Máximo 12 líneas totales.\n\n------------------------------------------------------------\nDATOS DE LA ALERTA\n------------------------------------------------------------\n\nAlert type: {{ $('Webhook').item.json.body.alert.alert_type }}\nAttack phase: {{ $('Webhook').item.json.body.alert.attack_phase }}\nAsset type: {{ $('Webhook').item.json.body.alert.asset_type }}\nAsset criticality: {{ $('Webhook').item.json.body.alert.asset_criticality }}\nSeverity: {{ $('Webhook').item.json.body.alert.severity }}\nDetection source: {{ $('Webhook').item.json.body.alert.detection_source }}\nConfidence: {{ $('Webhook').item.json.body.alert.confidence }}\nAsset exposure: {{ $('Webhook').item.json.body.alert.asset_exposure }}\nIP reputation: {{ $('Webhook').item.json.body.alert.ip_reputation }}\nRepeat offender: {{ $('Webhook').item.json.body.alert.repeat_offender }}\nUser role: {{ $('Webhook').item.json.body.alert.user_role }}\nIs privileged account: {{ $('Webhook').item.json.body.alert.is_privileged_account }}\nIsolation supported: {{ $('Webhook').item.json.body.alert.isolation_supported }}\n\n------------------------------------------------------------\nEVALUACIÓN\n------------------------------------------------------------\n\nAcción correcta esperada:\n{{ $('PredecirAcción').item.json.recommended_action}}\n\nAcción propuesta por el alumno:\n{{ $('Webhook').item.json.body.operator_action }}\n\nMotivación del alumno:\n{{ $('Webhook').item.json.body.operator_reason }}\n\n------------------------------------------------------------\nINSTRUCCIONES DE EVALUACIÓN\n------------------------------------------------------------\n\n1. Compara la acción del alumno con la acción correcta esperada.\n2. Si coinciden, el veredicto debe ser CORRECTO.\n3. Si no coinciden, el veredicto debe ser INCORRECTO.\n4. Justifica tu decisión basándote en severidad, fase de ataque, criticidad del activo y señales contextuales.\n5. Si la motivación del alumno es débil o vaga, indícalo explícitamente.\n6. Si es incorrecto, explica cuál debería haber sido el razonamiento correcto.\n7. Bajo ningun concepto, si la accion del alumno ({{ $('Webhook').item.json.body.operator_action }}) es diferente a la correcta ({{ $('PredecirAcción').item.json.recommended_action}}), digas que el verdicto es correcto.",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        1456,
+        0
+      ],
+      "id": "d7dc9c6a-9da0-4427-adac-7a0abf3bc210",
+      "name": "Corregir"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Obtener valores desde otros nodos\nconst correctAction = $node[\"PredecirAcción\"].json.recommended_action;\nconst operatorAction = $node[\"Webhook\"].json.body.operator_action;\nconst feedbackText = $node[\"Corregir\"].json.output;\n\n// Comparación estricta\nconst isCorrect = correctAction === operatorAction;\n\n// Score automático\nconst score = isCorrect ? 1 : 0;\n\nreturn [\n  {\n    json: {\n      correct_action: correctAction,\n      is_correct: isCorrect,\n      score: score,\n      feedback_text: feedbackText,\n      feedback_json: {\n        reason_tag: isCorrect ? \"correct\" : \"incorrect\"\n      }\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1776,
+        0
+      ],
+      "id": "35bfec0d-2910-4c8c-b430-b4001bd4d2e0",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "PredecirAcción",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PredecirAcción": {
+      "main": [
+        [
+          {
+            "node": "Obtener Playbook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generar Explicación AI",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Playbook": {
+      "main": [
+        [
+          {
+            "node": "Generar Explicación AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Corregir",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generar Explicación AI": {
+      "main": [
+        [
+          {
+            "node": "Corregir",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Corregir": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "53680638-a62d-491c-8c28-91231d17f77d",
+  "meta": {
+    "instanceId": "e68f84ab5951afa07f9497154e68706083bac4eb77917393e2b72a9e04421f22"
+  },
+  "id": "9wBV4WK0JHbq2Ftl",
+  "tags": []
+}

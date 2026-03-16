@@ -1,0 +1,106 @@
+{
+  "name": "UpdateOperatorsShift",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\n\n// hora en España (importante en Docker)\nconst hour = new Intl.DateTimeFormat('en-GB', {\n  hour: 'numeric',\n  hour12: false,\n  timeZone: 'Europe/Madrid'\n}).format(now);\n\nlet shift;\n\nif (hour >= 6 && hour < 14) shift = 'mañana';\nelse if (hour >= 14 && hour < 22) shift = 'tarde';\nelse shift = 'noche';\n\nreturn [{ shift }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        48
+      ],
+      "id": "a90a3a2d-e88e-4ea4-9008-076190b4056a",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "00 06 * * *"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "00 14 * * *"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "00 22 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -544,
+        48
+      ],
+      "id": "54a6f10c-c052-4a8d-99e3-975297be7013",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE operators\nSET\n  is_active = (shift_name = '{{ $json.shift }}'),\n  updated_at = NOW();",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        128,
+        48
+      ],
+      "id": "1dc7b2a2-759f-4718-b43a-96d69819c330",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "JmwTUVkO92wuYNBe",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Madrid",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "ed122ba7-05ff-49e9-b94e-fe319e51f52a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e68f84ab5951afa07f9497154e68706083bac4eb77917393e2b72a9e04421f22"
+  },
+  "id": "FVsbHbNUTZ5jZH9U",
+  "tags": []
+}

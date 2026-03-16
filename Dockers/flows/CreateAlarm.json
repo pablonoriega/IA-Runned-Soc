@@ -1,0 +1,68 @@
+{
+  "name": "CreateAlarm",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -656,
+        64
+      ],
+      "id": "5f2d847b-6169-429c-8ba2-d068822ceddc",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://soc-simulator:9000/generate",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "n",
+              "value": "1"
+            },
+            {
+              "name": "notify",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -336,
+        64
+      ],
+      "id": "fbc74e3b-5e26-44b0-ab05-2292f7721a28",
+      "name": "HTTP Request1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "586549dc-87df-42c7-95cb-30b99ffe317d",
+  "meta": {
+    "instanceId": "e68f84ab5951afa07f9497154e68706083bac4eb77917393e2b72a9e04421f22"
+  },
+  "id": "0Jq5J8KVdO2AF5HL",
+  "tags": []
+}

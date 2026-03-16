@@ -1,0 +1,205 @@
+{
+  "name": "Retrain Model",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "retrain-model",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -384,
+        -80
+      ],
+      "id": "24154d00-3123-4829-92a4-a3e57402690f",
+      "name": "Webhook",
+      "webhookId": "c45cf6f5-41ba-4850-8c91-45f5d382dd2f"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2b8ca4a6-336e-4771-8114-61837f7adf51",
+              "leftValue": "={{$json.body.run_immediately}}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -96,
+        -80
+      ],
+      "id": "0d1214af-d850-481b-9c26-0813aff4031f",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://soc-ml-api:8000/retrain/run",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"type\": \"{{ $('Webhook').item.json.body.type }}\",\n  \"version\": \"{{ $('Webhook').item.json.body.version }}\",\n  \"scheduled_for\": \"{{ $('Webhook').item.json.body.scheduled_for }}\",\n  \"run_immediately\": \"{{ !!$('Webhook').item.json.body.run_immediately }}\",\n  \"when\": \"{{ $('Webhook').item.json.body.when }}\",\n  \"dataset\": \"{{ $('Webhook').item.json.body.dataset }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        688,
+        -96
+      ],
+      "id": "991913a3-6824-4f97-8827-80e9f87132fa",
+      "name": "Reentrenar"
+    },
+    {
+      "parameters": {
+        "resume": "specificTime",
+        "dateTime": "={{$json.body.scheduled_for}}"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        176,
+        16
+      ],
+      "id": "c10debd4-14b8-404d-b153-c1c5243fc953",
+      "name": "Wait",
+      "webhookId": "76330ebf-5d03-4dd1-baee-85c23f5bc5fe"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE ia_model\nSET\n  status = 'RUNNING'\n WHERE \n  version LIKE '{{ $json.body.version }}'\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        432,
+        -96
+      ],
+      "id": "a6fe9d23-ce25-4525-85da-58f4a1d6ae36",
+      "name": "Status Running",
+      "credentials": {
+        "postgres": {
+          "id": "JmwTUVkO92wuYNBe",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE ia_model\nSET\n  status = 'RETRAIN_FINISHED'\nWHERE\n  version = '{{ $json.version }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        928,
+        -96
+      ],
+      "id": "c319f167-cf06-4b95-8121-c32f87c3264e",
+      "name": "Status Rettrained",
+      "credentials": {
+        "postgres": {
+          "id": "JmwTUVkO92wuYNBe",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Status Running",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Status Running",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status Running": {
+      "main": [
+        [
+          {
+            "node": "Reentrenar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reentrenar": {
+      "main": [
+        [
+          {
+            "node": "Status Rettrained",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1cc1aff7-ad0e-4eff-8a7b-9d98f6fc3cb2",
+  "meta": {
+    "instanceId": "e68f84ab5951afa07f9497154e68706083bac4eb77917393e2b72a9e04421f22"
+  },
+  "id": "YL4uQA643THMOFx3",
+  "tags": []
+}

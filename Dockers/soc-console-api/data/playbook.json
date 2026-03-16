@@ -1,0 +1,451 @@
+{
+  "playbook_id": "minisoc_response_playbook_v2_explainable",
+  "version": "2.0.0",
+  "language": "es",
+  "purpose": {
+    "summary": "Playbook de respuesta SOC explicable: define reglas explícitas y citables para seleccionar y justificar acciones de respuesta ante alertas ya detectadas.",
+    "goal": "Decidir la acción recomendada y permitir una explicación corta (<=4 frases) anclada a reglas base y overrides de política.",
+    "scope": "No determina si la alerta es maliciosa; asume que existe una alerta y decide qué hacer ahora."
+  },
+  "actions": {
+    "ignore": "No actuar; la alerta se considera ruido o riesgo mínimo.",
+    "investigate": "Investigar/triage manual antes de tomar acciones disruptivas.",
+    "block_ip": "Bloquear la IP/origen para cortar actividad de red.",
+    "reset_credentials": "Forzar reset de credenciales del usuario afectado.",
+    "disable_account": "Deshabilitar la cuenta (acción contundente sobre identidad).",
+    "isolate_host": "Aislar el host del entorno (EDR/NAC/red).",
+    "escalate_incident": "Escalar a respuesta formal de incidente (IR)."
+  },
+  "input_schema": {
+    "alert_type": {
+      "type": "string",
+      "description": "Tipo de alerta (ej. malware_detected, data_exfiltration, suspicious_login, etc.)."
+    },
+    "attack_phase": {
+      "type": "string",
+      "description": "Fase del ataque (reconnaissance, initial_access, execution, lateral_movement, exfiltration)."
+    },
+    "asset_type": {
+      "type": "string",
+      "description": "Tipo de activo (workstation, server, database, cloud_service)."
+    },
+    "asset_criticality": {
+      "type": "string",
+      "description": "Criticidad del activo (low, medium, high)."
+    },
+    "severity": {
+      "type": "integer",
+      "description": "Severidad 1-5 (1 bajo, 5 crítico)."
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "description": "Timestamp UTC ISO8601."
+    },
+    "is_business_hours": {
+      "type": "boolean",
+      "description": "Indica si ocurre en horario laboral."
+    },
+    "detection_source": {
+      "type": "string",
+      "description": "Fuente de detección (EDR, SIEM, IDS, NDR, DLP, IAM, etc.)."
+    },
+    "confidence": {
+      "type": "number",
+      "description": "Confianza del detector/modelo (0-0.99)."
+    },
+    "src_ip": {
+      "type": "string",
+      "description": "IP origen asociada a la alerta."
+    },
+    "asset_exposure": {
+      "type": "string",
+      "description": "Exposición del activo (internal o internet_facing)."
+    },
+    "src_country": {
+      "type": "string",
+      "description": "País de origen si aplica; INTERNAL si origen interno."
+    },
+    "geo_anomaly": {
+      "type": "boolean",
+      "description": "Anomalía geográfica (true/false)."
+    },
+    "ip_reputation": {
+      "type": "string",
+      "description": "Reputación IP (good, suspicious, bad)."
+    },
+    "repeat_offender": {
+      "type": "boolean",
+      "description": "Si el origen es reincidente."
+    },
+    "previous_incidents_30d": {
+      "type": "integer",
+      "description": "Número de incidentes previos asociados en los últimos 30 días."
+    },
+    "event_count": {
+      "type": "integer",
+      "description": "Conteo de eventos correlacionados que sustentan la alerta."
+    },
+    "time_window_minutes": {
+      "type": "integer",
+      "description": "Ventana de correlación en minutos."
+    },
+    "user_role": {
+      "type": "string",
+      "description": "Rol de usuario (standard, admin, service_account)."
+    },
+    "is_privileged_account": {
+      "type": "boolean",
+      "description": "Indica si la cuenta es privilegiada (admin o service_account)."
+    },
+    "isolation_supported": {
+      "type": "boolean",
+      "description": "Indica si el activo soporta aislamiento."
+    },
+    "downtime_tolerance": {
+      "type": "string",
+      "description": "Tolerancia a downtime (low, medium, high)."
+    },
+    "model_top_k": {
+      "type": "array",
+      "description": "Top-k del modelo (alternativas con probabilidad).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string" },
+          "prob": { "type": "number" }
+        },
+        "required": ["action", "prob"]
+      }
+    }
+  },
+  "decision_principles": [
+    "La fase del ataque es el factor más determinante para seleccionar la acción.",
+    "Severidad y criticidad del activo pueden elevar la respuesta (más contundente).",
+    "Señales fuertes (C2, ransomware, exfiltración) tienden a escalar a IR.",
+    "Baja confianza evita acciones disruptivas salvo casos críticos.",
+    "Mala reputación de IP y reincidencia endurecen la respuesta.",
+    "Restricciones operativas (aislamiento no soportado, baja tolerancia a downtime) sustituyen acciones por alternativas equivalentes.",
+    "La explicación debe citar una regla base y/o un override, y al menos una señal del contexto."
+  ],
+  "base_rules_by_phase": {
+    "exfiltration": [
+      {
+        "rule_id": "BR-EXF-001",
+        "if": "attack_phase == 'exfiltration'",
+        "then": "escalate_incident",
+        "explanation": "La fase de exfiltración implica riesgo material (pérdida de datos) y requiere IR formal."
+      }
+    ],
+    "lateral_movement": [
+      {
+        "rule_id": "BR-LAT-001",
+        "if": "severity >= 4 OR asset_criticality == 'high'",
+        "then": "escalate_incident",
+        "explanation": "Movimiento lateral con severidad alta o activo crítico requiere escalado."
+      },
+      {
+        "rule_id": "BR-LAT-002",
+        "if": "alert_type IN ['credential_dump_detected','privilege_escalation'] AND asset_type == 'workstation'",
+        "then": "reset_credentials",
+        "explanation": "En endpoint de usuario, el control inmediato suele ser reset de credenciales."
+      },
+      {
+        "rule_id": "BR-LAT-003",
+        "if": "alert_type IN ['credential_dump_detected','privilege_escalation'] AND asset_type IN ['server','database','cloud_service']",
+        "then": "disable_account",
+        "explanation": "En infra/servicios, cortar identidad reduce el riesgo de propagación."
+      },
+      {
+        "rule_id": "BR-LAT-004",
+        "if": "asset_type IN ['server','database'] AND asset_criticality != 'high' AND severity <= 3",
+        "then": "isolate_host",
+        "explanation": "En servidores/DB no críticos con severidad moderada, el aislamiento corta el movimiento lateral."
+      },
+      {
+        "rule_id": "BR-LAT-005",
+        "if": "asset_type == 'cloud_service' AND severity <= 3",
+        "then": "disable_account",
+        "explanation": "En cloud, la contención suele hacerse por identidad más que por aislamiento."
+      },
+      {
+        "rule_id": "BR-LAT-006",
+        "if": "DEFAULT",
+        "then": "investigate",
+        "explanation": "Si no aplica ninguna condición fuerte, se investiga."
+      }
+    ],
+    "execution": [
+      {
+        "rule_id": "BR-EXE-001",
+        "if": "alert_type == 'data_exfiltration' AND (severity >= 3 OR asset_criticality IN ['medium','high'])",
+        "then": "escalate_incident",
+        "explanation": "Exfiltración detectada durante ejecución con severidad/criticidad relevantes requiere escalado."
+      },
+      {
+        "rule_id": "BR-EXE-002",
+        "if": "asset_type == 'database' AND alert_type IN ['malware_detected','ransomware_activity','command_and_control'] AND severity >= 3 AND asset_criticality IN ['medium','high']",
+        "then": "escalate_incident",
+        "explanation": "DB sensible con señal fuerte y severidad >=3 en activo medio/alto requiere IR."
+      },
+      {
+        "rule_id": "BR-EXE-003",
+        "if": "severity >= 4 AND asset_criticality IN ['medium','high']",
+        "then": "escalate_incident",
+        "explanation": "Severidad alta en activo relevante impulsa escalado."
+      },
+      {
+        "rule_id": "BR-EXE-004",
+        "if": "alert_type IN ['ransomware_activity','malware_detected','command_and_control'] AND asset_type != 'cloud_service'",
+        "then": "isolate_host",
+        "explanation": "Señales de malware/ransom/C2 en endpoints/servidores se contienen aislando el host."
+      },
+      {
+        "rule_id": "BR-EXE-005",
+        "if": "alert_type IN ['ransomware_activity','malware_detected','command_and_control'] AND asset_type == 'cloud_service' AND asset_criticality IN ['medium','high'] AND severity >= 4",
+        "then": "escalate_incident",
+        "explanation": "Señal fuerte en cloud crítico con severidad alta requiere escalado."
+      },
+      {
+        "rule_id": "BR-EXE-006",
+        "if": "alert_type IN ['suspicious_login','brute_force_attempt'] AND asset_type == 'workstation'",
+        "then": "reset_credentials",
+        "explanation": "Autenticación sospechosa en endpoint suele mitigarse reseteando credenciales."
+      },
+      {
+        "rule_id": "BR-EXE-007",
+        "if": "alert_type IN ['suspicious_login','brute_force_attempt'] AND asset_criticality IN ['medium','high'] AND asset_type != 'workstation'",
+        "then": "disable_account",
+        "explanation": "En activos relevantes, se corta la cuenta para reducir riesgo."
+      },
+      {
+        "rule_id": "BR-EXE-008",
+        "if": "DEFAULT",
+        "then": "investigate",
+        "explanation": "Si no aplica ninguna condición fuerte, se investiga."
+      }
+    ],
+    "initial_access": [
+      {
+        "rule_id": "BR-INI-001",
+        "if": "severity == 5 OR asset_criticality == 'high'",
+        "then": "escalate_incident",
+        "explanation": "Acceso inicial en activo crítico o severidad máxima requiere escalado."
+      },
+      {
+        "rule_id": "BR-INI-002",
+        "if": "alert_type IN ['phishing_email','suspicious_login','brute_force_attempt'] AND severity <= 2",
+        "then": "investigate",
+        "explanation": "Con severidad baja se prioriza triage para evitar falsos positivos disruptivos."
+      },
+      {
+        "rule_id": "BR-INI-003",
+        "if": "alert_type IN ['phishing_email','suspicious_login','brute_force_attempt'] AND severity == 3 AND asset_type == 'workstation'",
+        "then": "reset_credentials",
+        "explanation": "Severidad 3 en workstation sugiere compromiso de credenciales: reset."
+      },
+      {
+        "rule_id": "BR-INI-004",
+        "if": "alert_type IN ['phishing_email','suspicious_login','brute_force_attempt'] AND severity >= 4 AND asset_type == 'workstation'",
+        "then": "reset_credentials",
+        "explanation": "Autenticación/phishing severo en endpoint: reset inmediato."
+      },
+      {
+        "rule_id": "BR-INI-005",
+        "if": "alert_type IN ['phishing_email','suspicious_login','brute_force_attempt'] AND severity >= 4 AND asset_type != 'workstation'",
+        "then": "disable_account",
+        "explanation": "En infra/servicios con severidad alta, deshabilitar cuenta es más seguro."
+      },
+      {
+        "rule_id": "BR-INI-006",
+        "if": "alert_type == 'malware_detected' AND asset_type == 'cloud_service' AND asset_criticality IN ['medium','high']",
+        "then": "escalate_incident",
+        "explanation": "Malware en cloud relevante sugiere impacto amplio y requiere IR."
+      },
+      {
+        "rule_id": "BR-INI-007",
+        "if": "alert_type == 'malware_detected' AND asset_type != 'cloud_service'",
+        "then": "isolate_host",
+        "explanation": "Malware en endpoint/servidor se contiene aislando el host."
+      },
+      {
+        "rule_id": "BR-INI-008",
+        "if": "DEFAULT",
+        "then": "investigate",
+        "explanation": "Si no aplica ninguna condición fuerte, se investiga."
+      }
+    ],
+    "reconnaissance": [
+      {
+        "rule_id": "BR-REC-001",
+        "if": "alert_type == 'port_scan' AND severity <= 2 AND asset_criticality == 'low'",
+        "then": "ignore",
+        "explanation": "Port scan de baja severidad en activo no crítico suele ser ruido de internet."
+      },
+      {
+        "rule_id": "BR-REC-002",
+        "if": "alert_type == 'port_scan' AND severity <= 2 AND asset_criticality != 'low'",
+        "then": "investigate",
+        "explanation": "Port scan leve sobre activo relevante merece triage."
+      },
+      {
+        "rule_id": "BR-REC-003",
+        "if": "alert_type IN ['port_scan','brute_force_attempt'] AND severity >= 4",
+        "then": "block_ip",
+        "explanation": "Recon agresivo con severidad alta se mitiga bloqueando origen."
+      },
+      {
+        "rule_id": "BR-REC-004",
+        "if": "alert_type == 'command_and_control'",
+        "then": "block_ip",
+        "explanation": "C2 detectado incluso en recon es señal fuerte de compromiso: bloquear."
+      },
+      {
+        "rule_id": "BR-REC-005",
+        "if": "severity <= 2",
+        "then": "ignore",
+        "explanation": "En reconocimiento, baja severidad suele ignorarse."
+      },
+      {
+        "rule_id": "BR-REC-006",
+        "if": "severity == 3",
+        "then": "investigate",
+        "explanation": "Severidad media en reconocimiento requiere triage."
+      },
+      {
+        "rule_id": "BR-REC-007",
+        "if": "severity >= 4",
+        "then": "block_ip",
+        "explanation": "Severidad alta en reconocimiento justifica bloqueo."
+      }
+    ]
+  },
+  "policy_overrides": [
+    {
+      "policy_id": "PO-001-low-confidence",
+      "priority": 10,
+      "when": "confidence < 0.60 AND base_action IN ['block_ip','disable_account','isolate_host'] AND severity <= 3 AND asset_criticality != 'high'",
+      "override_action": "investigate",
+      "reason_tag": "low_confidence_investigate",
+      "explanation": "Confianza baja: se evita acción disruptiva y se pasa a investigación."
+    },
+    {
+      "policy_id": "PO-002-bad-ip-reputation",
+      "priority": 20,
+      "when": "ip_reputation == 'bad' AND severity >= 3 AND base_action IN ['ignore','investigate']",
+      "override_action": "block_ip IF attack_phase == 'reconnaissance' ELSE disable_account",
+      "reason_tag": "bad_ip_reputation",
+      "explanation": "Reputación IP mala: se endurece la respuesta para reducir riesgo."
+    },
+    {
+      "policy_id": "PO-003-repeat-offender",
+      "priority": 30,
+      "when": "repeat_offender == true",
+      "override_action": "investigate IF base_action == 'ignore' ELSE (block_ip IF attack_phase == 'reconnaissance' AND event_count >= 80 AND time_window_minutes <= 15 ELSE (disable_account IF base_action == 'investigate' AND severity >= 3 ELSE base_action))",
+      "reason_tag": "repeat_offender",
+      "explanation": "Origen reincidente: aumenta prioridad y puede endurecer (bloqueo/disable_account) según contexto."
+    },
+    {
+      "policy_id": "PO-004-internet-facing-recon",
+      "priority": 40,
+      "when": "attack_phase == 'reconnaissance' AND asset_exposure == 'internet_facing' AND alert_type IN ['port_scan','brute_force_attempt'] AND severity >= 3",
+      "override_action": "block_ip",
+      "reason_tag": "internet_facing_recon",
+      "explanation": "Reconnaissance desde internet con severidad >=3: bloqueo razonable para cortar la actividad."
+    },
+    {
+      "policy_id": "PO-005-privileged-account",
+      "priority": 50,
+      "when": "is_privileged_account == true AND alert_type IN ['suspicious_login','brute_force_attempt','credential_dump_detected','privilege_escalation']",
+      "override_action": "escalate_incident IF (severity >= 4 AND asset_criticality IN ['medium','high']) ELSE (disable_account IF (severity >= 3 AND base_action IN ['ignore','investigate','reset_credentials']) ELSE base_action)",
+      "reason_tag": "privileged_account_risk",
+      "explanation": "Cuenta privilegiada: se endurece (disable/escalado) porque el impacto potencial es alto."
+    },
+    {
+      "policy_id": "PO-006-geo-anomaly-auth",
+      "priority": 60,
+      "when": "geo_anomaly == true AND alert_type IN ['suspicious_login','phishing_email'] AND severity >= 3 AND base_action IN ['ignore','investigate']",
+      "override_action": "reset_credentials IF asset_type == 'workstation' ELSE disable_account",
+      "reason_tag": "geo_anomaly_auth",
+      "explanation": "Anomalía geográfica en auth/phishing: indica posible compromiso y justifica cortar credenciales/identidad."
+    },
+    {
+      "policy_id": "PO-007-isolation-not-supported",
+      "priority": 70,
+      "when": "base_action == 'isolate_host' AND isolation_supported == false",
+      "override_action": "escalate_incident IF (severity >= 4 OR asset_criticality IN ['medium','high']) ELSE disable_account",
+      "reason_tag": "isolation_not_supported",
+      "explanation": "No se puede aislar: se sustituye por alternativa equivalente (disable/escalado)."
+    },
+    {
+      "policy_id": "PO-008-downtime-constraint",
+      "priority": 80,
+      "when": "downtime_tolerance == 'low' AND base_action == 'isolate_host' AND severity < 5",
+      "override_action": "escalate_incident IF asset_criticality == 'high' ELSE disable_account",
+      "reason_tag": "downtime_constraint",
+      "explanation": "Baja tolerancia a downtime: evita aislamiento y usa alternativas menos disruptivas."
+    },
+    {
+      "policy_id": "PO-009-strong-signal",
+      "priority": 90,
+      "when": "alert_type IN ['command_and_control','ransomware_activity','data_exfiltration'] AND attack_phase IN ['execution','lateral_movement'] AND (severity >= 4 OR asset_criticality IN ['medium','high'])",
+      "override_action": "escalate_incident",
+      "reason_tag": "strong_signal_detected",
+      "explanation": "Señales fuertes en fases avanzadas: requiere IR formal."
+    },
+    {
+      "policy_id": "PO-010-high-sev-high-criticality",
+      "priority": 100,
+      "when": "severity == 5 AND asset_criticality == 'high'",
+      "override_action": "escalate_incident",
+      "reason_tag": "high_severity_or_critical_asset",
+      "explanation": "Severidad máxima y activo crítico: escalado casi siempre."
+    }
+  ],
+  "reason_tags": {
+    "phase_exfiltration": "La fase exfiltration requiere escalado por defecto.",
+    "high_severity_or_critical_asset": "Severidad alta o activo crítico justifica escalado.",
+    "strong_signal_detected": "Señales fuertes (C2/ransom/exfil) requieren escalado.",
+    "low_confidence_investigate": "Confianza baja: investigar antes de acciones disruptivas.",
+    "bad_ip_reputation": "Reputación IP mala: endurecer respuesta.",
+    "repeat_offender": "Origen reincidente: aumenta prioridad y puede endurecer respuesta.",
+    "internet_facing_recon": "Recon desde internet con severidad relevante: bloqueo.",
+    "privileged_account_risk": "Cuenta privilegiada: endurecer (disable/escalado).",
+    "geo_anomaly_auth": "Anomalía geográfica en auth/phishing: cortar credenciales/identidad.",
+    "isolation_not_supported": "Aislamiento no disponible: usar alternativa.",
+    "downtime_constraint": "Restricción de downtime: evitar aislamiento.",
+    "playbook_base": "Decisión derivada de reglas base sin overrides."
+  },
+  "explanation_templates": {
+    "max_4_sentences": [
+      "Acción: {action}. Regla base aplicada: {base_rule_id} ({base_rule_summary}).",
+      "Señal(es) clave: {signals}.",
+      "Override aplicado: {policy_id} ({policy_summary}).",
+      "Por eso la respuesta recomendada es {action}."
+    ],
+    "notes": "El generador de explicación puede omitir líneas si no hay override o si bastan 2-3 frases."
+  },
+  "llm_response_contract": {
+    "type": "object",
+    "description": "Respuesta breve y auditable.",
+    "properties": {
+      "action": { "type": "string" },
+      "base_rule_id": { "type": "string" },
+      "policy_id": { "type": "string" },
+      "signals": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "2-4 señales del contexto (ej. phase=exfiltration, severity=5, ip_reputation=bad, etc.)."
+      },
+      "reason_tags": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Lista de reason tags usados."
+      },
+      "explanation_4_sentences_max": {
+        "type": "string",
+        "description": "Texto en español de máximo 4 frases."
+      }
+    },
+    "required": ["action", "signals", "explanation_4_sentences_max"]
+  }
+}

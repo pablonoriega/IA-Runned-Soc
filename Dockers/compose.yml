@@ -1,0 +1,154 @@
+version: "3.9"
+
+services:
+
+  jira:
+    image: atlassian/jira-software:9.15.0
+    container_name: jira
+    ports:
+      - "8080:8080"
+    volumes:
+      - jira_data:/var/atlassian/application-data/jira
+    networks:
+      - jira-net
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    container_name: soc-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=soc
+      - POSTGRES_PASSWORD=socpass
+      - POSTGRES_DB=socdb
+      - TZ=Europe/Madrid
+    ports:
+      - "5432:5432"
+    volumes:
+      - soc_pg_data:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - jira-net
+
+  n8n:
+    image: n8nio/n8n:1.118.2
+    container_name: n8n-minisoc
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - TZ=Europe/Madrid
+      - GENERIC_TIMEZONE=Europe/Madrid
+      - N8N_BASIC_AUTH_ACTIVE=false
+      - DB_TYPE=sqlite
+      - DB_SQLITE_PATH=/home/node/.n8n/database.sqlite
+      # (Opcional) si quieres que n8n escriba logs en /data/logs
+      - N8N_LOG_LEVEL=info
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./logs/n8n:/data/logs
+      # (Opcional) carpeta para exportar/importar workflows en JSON
+      - ./flows:/data/flows
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - jira-net
+    user: "1000:1000"
+
+  api:
+    build: ./api-ml
+    container_name: soc-ml-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      - TZ=Europe/Madrid
+      # Conexión BDD si el ML API va a leer para retrain
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_DB=socdb
+      - PG_USER=soc
+      - PG_PASS=socpass
+      # (Opcional) directorios internos
+      - RETRAIN_DIR=/app/retrain
+      - MODELS_DIR=/app/models
+      - LOGS_DIR=/app/logs
+    networks:
+      - jira-net
+    depends_on:
+      - postgres
+    volumes:
+      - ./api-ml/retrain:/app/retrain
+      - ./api-ml/models:/app/models
+      - ./api-ml/train:/app/train
+      - ./api-ml/logs/api:/app/logs
+
+
+
+  simulator:
+    build: ./api-sim
+    container_name: soc-simulator
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    environment:
+      - TZ=Europe/Madrid
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_DB=socdb
+      - PG_USER=soc
+      - PG_PASS=socpass
+      - N8N_WEBHOOK_URL=http://n8n-minisoc:5678/webhook/soc-alert
+    networks:
+      - jira-net
+    depends_on:
+      - postgres
+      - n8n
+    volumes:
+      # logs del simulador
+      - ./logs/simulator:/app/logs
+
+  soc-console-api:
+    build: ./soc-console-api
+    container_name: soc-console-api
+    restart: unless-stopped
+    ports:
+      - "7000:7000"
+    environment:
+      - TZ=Europe/Madrid
+      - PG_HOST=postgres
+      - PG_PORT=5432
+      - PG_DB=socdb
+      - PG_USER=soc
+      - PG_PASS=socpass
+      - FRONTEND_ORIGIN=http://localhost:5173
+      - PLAYBOOK_PATH=/app/data/playbook.json
+    command: uvicorn app.main:app --host 0.0.0.0 --port 7000
+    networks:
+      - jira-net
+    depends_on:
+      - postgres
+    volumes:
+      - ./soc-console-api/data:/app/data
+
+  soc-console-web:
+    build: ./soc-console-web
+    container_name: soc-console-web
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE=http://localhost:7000
+    networks:
+      - jira-net
+    depends_on:
+      - soc-console-api
+
+networks:
+  jira-net:
+
+volumes:
+  jira_data:
+  n8n_data:
+  soc_pg_data:
