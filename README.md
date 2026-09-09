@@ -1,408 +1,214 @@
-# SOC Automation System
+# AI-Assisted SOC — Security Operations Center with ML recommendations, LLM agents and continuous learning
 
-This project deploys a **Security Operations Center (SOC) simulation environment** that integrates:
+Master's thesis project, MSc in AI Applied to Cybersecurity (International Cybersecurity Campus & UCAM, 2026).
 
-- Machine Learning for incident response recommendation
-- Automated workflows using **n8n**
-- Containerized services using **Docker**
-- A SOC operator console
+A working prototype of a Security Operations Center where every incoming alert is registered, assigned to the right operator and enriched with a recommended response action, all automatically. The operator keeps the final decision (human-in-the-loop), every decision is stored, and the model can be retrained from real operator decisions directly from the console. A training module lets junior analysts practise on simulated incidents with an LLM acting as senior instructor.
 
-The system automatically generates training data, trains a machine learning model, and deploys the entire infrastructure.
+Everything runs locally with Docker Compose and a local LLM through Ollama. No external APIs, no cost.
 
----
+![Architecture](DOCS/img/architecture.png)
 
-# Requirements
+## What it does
 
-Before running the system you must install:
+1. **Alert intake.** A simulator generates security alerts with realistic context: alert type, severity, attack phase, affected asset and its criticality, IP reputation, repeat offender, event count, business hours, and more (30+ fields).
+2. **Automated triage (n8n, `Process Alert`).** The alert is registered, the ML API returns the top-K recommended actions with confidence, and an LLM agent (Llama 3.2 via Ollama, with PostgreSQL tools) assigns the best available operator based on specialisation, shift and workload. The agent is constrained to a pre-filtered list of valid candidates and must answer in JSON; deterministic fallback filters (by phase, alert type, severity) run if the agent fails. Average time from alert to assignment: **~15 seconds**.
+3. **Operator console (React).** The operator sees the queue in real time (WebSocket over PostgreSQL `LISTEN/NOTIFY`), opens the alert, reviews the recommended actions, the playbook rules behind them and the events, and records a decision with a reason.
+4. **Continuous learning.** Decisions are stored and can be selected from the console to retrain the model. New versions go into a model registry with their metrics; the active version is switched automatically. Each version exposes its metrics, confusion matrix and permutation feature importance in the console (explainability).
+5. **Analyst training.** Practice sessions present historical alerts; the analyst decides, and an LLM "senior instructor" grades the decision against the model recommendation and explains the correct action. Scores are stored per session. Average time of the learning flow: **~6 seconds**.
 
-- **Docker Desktop**
+## Architecture
 
-Download it from:
+| Service | Tech | Role |
+|---|---|---|
+| `soc-console-web` | React 18, Vite, WebSockets | Operator console: queue, alert detail, SOC status, history, models, training |
+| `soc-console-api` | FastAPI, asyncpg | Alerts, decisions, playbook, operators and SLA, metrics, training sessions, model views (~30 endpoints) |
+| `api-ml` | FastAPI, scikit-learn, pandas | `/predict`, `/retrain/run`, model registry and versioning |
+| `api-sim` | FastAPI | Alert simulator |
+| n8n 1.118 | Workflows | `Process Alert`, `Retrain Model`, `Training Explication`, `UpdateOperatorsShift` |
+| Ollama | Llama 3.2 | Operator-assignment agent and training instructor |
+| PostgreSQL 16 | | Alerts, workflow state, decisions, operators, training sessions, model registry |
 
-https://www.docker.com/products/docker-desktop/
+Database schema:
 
-Make sure **Docker Desktop is installed and running** before starting the system.
+![Database](DOCS/img/database.png)
 
----
+## The ML model
 
-# Quick Start (Recommended)
+- **Task:** recommend the response action for an alert (7 classes: `block_ip`, `disable_account`, `escalate_incident`, `ignore`, `investigate`, `isolate_host`, `reset_credentials`). The model does not detect threats; it assumes the alert was already raised by a SIEM/EDR and helps decide what to do.
+- **Data:** a synthetic dataset of 50,000 records generated from rule-based SOC response policies, with controlled noise and class balancing to avoid a fully deterministic mapping. Test set: 10,000 independent records.
+- **Algorithm:** Random Forest (chosen over single decision trees for robustness and lower overfitting).
+- **Explainability:** permutation feature importance per model version, shown in the console. The top drivers are `severity`, `attack_phase`, `asset_criticality`, `repeat_offender` and `alert_type`.
+- **Retraining:** operator decisions are weighted higher than base data so the model adapts progressively to real operations.
 
-The easiest way to deploy the system is using the provided launcher.
+### Results (test set, 10,000 records)
 
-## Step 1 — Run the launcher
+| Metric | Value |
+|---|---|
+| Accuracy | **0.990** |
+| F1 macro | **0.987** |
+| F1 weighted | **0.990** |
 
-Execute:
+Per-class precision / recall / F1 are all above 0.95 (`disable_account` is the weakest at 0.96 / 0.96 / 0.96; `ignore`, `block_ip` and `reset_credentials` are ≥ 0.99).
 
-    dist / launcher.exe
+![Model metrics in the console](DOCS/img/console_model_metrics.png)
 
-The launcher automatically performs the following steps:
+![Feature importance](DOCS/img/feature_importance.png)
 
-1. Generates the training dataset  
-2. Trains the machine learning model  
-3. Copies the trained model and the dataset into the Docker ML service  
-4. Builds all Docker containers  
-5. Deploys the full infrastructure  
-6. Imports the **n8n workflows**  
-7. Starts all services  
+![Normalised confusion matrix](DOCS/img/confusion_matrix_normalized.png)
 
-Once the process finishes, the SOC environment will be ready.
+## Where the LLM is used, and where it is not
 
----
+The LLM is only used where it adds clear value: assigning operators with reasoning over context, and generating explanations for analysts. Everything deterministic or repetitive (registration, status updates, filters, retraining) is handled with rules, SQL and code. This hybrid approach keeps the flow fast and predictable; local models like Llama 3.2 are noticeably weaker than commercial ones, so they are kept away from decisions that must be exact.
 
-# Available Services
+## Limitations and future work
 
-After deployment the following services will be available.
+- Alerts and the training dataset are synthetic; this is a functional prototype, not a production SOC.
+- Local LLM quality limits the explanations; a stronger model would improve them.
+- Next steps: replace the simulator with real SIEM/EDR input, stress-test with many concurrent operators, and evaluate more capable models.
+- The one-shot launcher is Windows-only. On macOS/Linux, run the Python scripts and `docker compose` manually (see below).
+- Credentials are hard-coded for a local demo environment.
 
-## n8n Automation Platform
+## Repository layout
 
-http://localhost:5678
-
-This service manages the automation workflows used by the SOC.
-
----
-
-## SOC Console (Operator Client)
-
-http://localhost:5173
-
-This web interface allows SOC operators to interact with the system.
-
----
-
-# Post-Deployment Configuration
-
-After deploying the system (either automatically or manually), a small configuration step is required inside **n8n**.
-
-Open:
-
-    http://localhost:5678
-
-Then complete the following configuration.
-
----
-
-# Configure Ollama
-
-The workflows use a **local LLM through Ollama**.
-
-First install Ollama:
-
-https://ollama.com
-
-### Start Ollama
-
-Ollama must be running before the workflows are executed.
-
-Open a **CMD terminal** and run:
-
-    ollama serve
-
-This command starts the Ollama local API server.
-
-### Download the required model
-
-Then download the model used by the workflows:
-
-    ollama pull llama3.2
-
-### Create the Ollama credential in n8n
-
-⚠️ **Important:**  
-Credentials are not imported with workflows. Because of this, you must **create a new Ollama credential manually in n8n**.
-
-If the credential is not created, the LLM nodes will fail.
-
-Steps:
-
-1. Open n8n:
-
-       http://localhost:5678
-
-2. Go to **Credentials**
-
-3. Click **Create Credential**
-
-4. Select **Ollama**
-
-5. Configure it with:
-
-Base URL:
-
-    http://host.docker.internal:11434
-
-6. Save the credential.
-
-Then assign this credential to the Ollama nodes used in the workflows.
+```
+IA Model/            dataset generation, exploration and offline training scripts
+Dockers/
+  compose.yml        full environment
+  api-ml/            ML API: predict, retrain, model registry
+  api-sim/           alert simulator
+  soc-console-api/   console API
+  soc-console-web/   React console
+  flows/             n8n workflows (JSON)
+  db-init/           PostgreSQL schema, triggers (LISTEN/NOTIFY) and seed operators
+DOCS/                thesis, technical document, dataset analysis, functional guide (Spanish)
+DOCS/img/            figures used in this README
+launcher.py          one-shot deployment script (Windows)
+```
 
 ---
 
-# Configure PostgreSQL Credentials
+# Installation
 
-Some workflows connect to the system database through PostgreSQL nodes.
+## Requirements
 
-⚠️ **Important:**  
-When workflows are imported into n8n, **database credentials are not imported automatically**.  
-Because of this, you must **create a new PostgreSQL credential manually in n8n**.  
-If this credential is not created, the workflows will fail with an error such as:
+- **Docker Desktop**, installed and running: https://www.docker.com/products/docker-desktop/
+- **Ollama**: https://ollama.com
+- Python 3 (only for the manual path)
 
-    Credential with ID "..." does not exist for type "postgres"
+## Quick start (Windows)
 
-### Create the credential in n8n
+Download `launcher.exe` from the [Releases](../../releases) page and run it. It will:
 
-1. Open n8n:
-   
-       http://localhost:5678
+1. Generate the training dataset
+2. Train the machine learning model
+3. Copy the model and dataset into the ML service
+4. Build all Docker containers
+5. Deploy the full infrastructure
+6. Import the n8n workflows
+7. Start all services
 
-2. Go to **Credentials**
+Then complete the **Post-deployment configuration** below.
 
-3. Click **Create Credential**
+## Manual deployment (macOS / Linux / if the launcher fails)
 
-4. Select **PostgreSQL**
+### 1. Generate the dataset and train the model
 
-5. Use the following configuration:
+```
+cd "IA Model"
+python GenerateDataset.py
+python DatasetTraining.py
+```
 
-Host: postgres  
-Port: 5432  
-Database: socdb  
-User: soc  
-Password: socpass  
+This produces `soc_action_recommender_rf.joblib` and `soc_dataset.csv`.
 
-6. Save the credential.
+### 2. Copy the artifacts into the ML service
 
-After creating it, assign this credential to all PostgreSQL nodes used in the workflows.
+```
+soc_action_recommender_rf.joblib  ->  Dockers/api-ml/
+soc_dataset.csv                   ->  Dockers/api-ml/train/
+```
 
----
+### 3. Start the environment
 
-# Activate the Workflows
+```
+cd Dockers
+docker compose up -d --build
+```
 
-Once **Ollama and PostgreSQL credentials are configured**, the following workflows must be **activated in n8n**.
+### 4. Import the n8n workflows
 
-Go to the n8n interface:
+Open http://localhost:5678 and import the JSON files in `Dockers/flows`.
 
-    http://localhost:5678
+## Post-deployment configuration
 
-Then activate the following workflows:
+### Ollama
 
-- **Process Alert**
-- **Retrain Model**
-- **Training Explication**
-- **UpdateOperatorsShift**
+Ollama must be running before the workflows execute.
 
-The workflow **CreateAlarm** should remain **disabled**.
+```
+ollama serve
+ollama pull llama3.2
+```
 
----
+Credentials are not imported with the workflows, so create an **Ollama** credential in n8n (Credentials → Create → Ollama) with base URL:
 
-# Manual Deployment (If the launcher fails)
+```
+http://host.docker.internal:11434
+```
 
-If the executable cannot be used, the system can be deployed manually.
+and assign it to the Ollama nodes.
 
----
+### PostgreSQL
 
-## Step 1 — Generate the dataset
+Create a **PostgreSQL** credential in n8n with:
 
-Navigate to:
+```
+Host: postgres
+Port: 5432
+Database: socdb
+User: soc
+Password: socpass
+```
 
-    IA Model
+and assign it to all PostgreSQL nodes. Without it the workflows fail with `Credential with ID "..." does not exist for type "postgres"`.
 
-Run:
+### Activate the workflows
 
-    GenerateDataset.py
+Activate **Process Alert**, **Retrain Model**, **Training Explication** and **UpdateOperatorsShift**. Leave **CreateAlarm** disabled.
 
----
+### Register the base model (needed for explainability)
 
-## Step 2 — Train the model
+The first model must be registered manually so the console can show its metrics and feature importance. Later versions produced by retraining are registered automatically.
 
-Inside the same folder run:
-
-    DatasetTraining.py
-
-This will generate the trained model:
-
-    soc_action_recommender_rf.joblib
-
----
-
-## Step 3 — Copy the trained model and the dataset
-
-Move the file:
-
-    soc_action_recommender_rf.joblib
-
-to:
-
-    Dockers/api-ml
-
-Move the file:
-
-    soc_dataset.csv
-
-to:
-
-    Dockers/api-ml/train
-
----
-
-## Step 4 — Start the Docker environment
-
-Open a **PowerShell terminal** inside:
-
-    Dockers
-
-Run:
-
-    docker compose up -d --build
-
-This command will:
-
-- Build all required containers  
-- Deploy the infrastructure  
-- Start all services  
-
-When the process finishes the system will be ready.
-
----
-
-## Step 5 — Import n8n workflows
-
-Open:
-
-    http://localhost:5678
-
-Import the workflows located in:
-
-    Dockers/flows
-
----
-
-## Step 6 — Configure Ollama
-
-Install Ollama:
-
-https://ollama.com
-
-Open a **CMD terminal** and run:
-
-    ollama serve
-
-Download the required model:
-
-    ollama pull llama3.2
-
-Create a new **Ollama credential** in n8n with:
-
-Base URL:
-
-    http://host.docker.internal:11434
-
----
-
-## Step 7 — Create PostgreSQL credential
-
-Because credentials are not imported with workflows, you must create a **new PostgreSQL credential in n8n**.
-
-Use the following configuration:
-
-Host: postgres  
-Port: 5432  
-Database: socdb  
-User: soc  
-Password: socpass  
-
-After creating it, assign the credential to all PostgreSQL nodes used in the workflows.
-
----
-
-## Step 8 — Activate the workflows
-
-Activate the following workflows in n8n:+
-
-- **Process Alert**
-- **Retrain Model**
-- **Training Explication**
-- **UpdateOperatorsShift**
-
-Leave the workflow **CreateAlarm** disabled.
-
-## Step 9 — Model Registration (Base Model for XAI Visualization)
-
-Before the SOC system can display explainability information (XAI) for the machine learning model, the **base model must be manually registered in the database**. This initial registration allows the system to generate and visualize the model explanations.
-
-The registration is performed using the executable `register_joblib_metrics.exe`, which stores the trained model (`.joblib`) together with its metadata in the model registry.
-
-This step is required **only for the base model**. Once the first model is registered, any subsequent models generated by the system will be automatically detected and registered, and their XAI information will be available without requiring manual intervention.
-
-### Manual Execution
-
-To register the model manually, open a **Command Prompt (CMD)** and navigate to the directory where the executable is located:
-
-    cd Dockers\api-ml\app\scripts
-
-Next, configure the database connection using environment variables:
-
-    set PG_HOST=localhost
-    set PG_PORT=5432
-    set PG_DB=socdb
-    set PG_USER=soc
-    set PG_PASS=socpass
-
-Once the environment variables are configured, execute the registration command:
-
-    register_joblib_metrics.exe ^
-    --joblib soc_action_recommender_rf.joblib ^
-    --version v1.0.0 ^
-    --dataset train\soc_dataset.csv ^
-    --artifact-path soc_action_recommender_rf.joblib ^
-    --set-active
-
-Parameter Description
-
---joblib
-Path to the trained model file (.joblib).
-
---version
-Version identifier assigned to the model.
-
---dataset
-Dataset used during training. This is stored for traceability and reproducibility.
-
---artifact-path
-Path to the model artifact that will be stored in the registry.
-
---set-active
-Marks the registered model as the active version used by the system.
-
----
-
-Once these steps are completed, the SOC system will be fully operational.
-
----
-
-# Project Structure
-
-.
-├── IA Model  
-│ ├── GenerateDataset.py  
-│ ├── DatasetTraining.py  
-│  
-├── Dockers  
-│ ├── compose.yml  
-│ ├── api-ml  
-│ ├── api-sim  
-│ ├── flows  
-│ ├── logs  
-│ ├── soc-console-api  
-│ └── soc-console-web  
-│  
-├── dist  
-│ └── launcher.exe  
-│  
-├── LICENSE  
-└── README.md  
-
----
-
-# License
-
-This project is licensed under the **MIT License**.
-
-See the `LICENSE` file for details.
+```
+cd Dockers/api-ml/app/scripts
+export PG_HOST=localhost PG_PORT=5432 PG_DB=socdb PG_USER=soc PG_PASS=socpass   # Windows: use `set`
+python register_joblib_metrics.py \
+  --joblib soc_action_recommender_rf.joblib \
+  --version v1.0.0 \
+  --dataset train/soc_dataset.csv \
+  --artifact-path soc_action_recommender_rf.joblib \
+  --set-active
+```
+
+| Parameter | Meaning |
+|---|---|
+| `--joblib` | Trained model file |
+| `--version` | Version identifier |
+| `--dataset` | Training dataset, stored for traceability |
+| `--artifact-path` | Path stored in the registry |
+| `--set-active` | Mark this version as the one used for predictions |
+
+## Services
+
+| Service | URL |
+|---|---|
+| SOC console | http://localhost:5173 |
+| n8n | http://localhost:5678 |
+| Console API | http://localhost:7000 |
+| ML API | http://localhost:8000 |
+| Alert simulator | http://localhost:9000 |
+
+## License
+
+MIT. See `LICENSE`.
